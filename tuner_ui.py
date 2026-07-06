@@ -109,7 +109,7 @@ KV = """
             on_release: root.request_load_text()
         Button:
             text: root.preview_button_text
-            on_release: root.request_preview()
+            on_release: root.toggle_preview_or_stop()
         Button:
             text: "Uložit MP3 jako..."
             on_release: root.request_save_mp3()
@@ -117,9 +117,6 @@ KV = """
             id: live_toggle
             text: "Živý náhled: VYP" if self.state == "normal" else "Živý náhled: ZAP"
             on_state: root.set_live(self.state == "down")
-        Button:
-            text: "Zastavit zvuk"
-            on_release: root.stop_playback()
 
     BoxLayout:
         size_hint_y: None
@@ -165,6 +162,7 @@ class RootUI(BoxLayout):
     playback_max = NumericProperty(1.0)
     playback_time = StringProperty("00:00 / 00:00")
     preview_button_text = StringProperty("Náhled [>-------]")
+    is_playing = BooleanProperty(False)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -224,6 +222,12 @@ class RootUI(BoxLayout):
         if self._debounce_ev:
             self._debounce_ev.cancel()
         self._debounce_ev = Clock.schedule_once(lambda dt: self.request_preview(), 0.35)
+
+    def toggle_preview_or_stop(self):
+        if self.is_playing:
+            self.stop_playback()
+        else:
+            self.request_preview()
 
     def request_preview(self):
         if self._running:
@@ -298,6 +302,7 @@ class RootUI(BoxLayout):
         self.playback_max = self._playback_duration if self._playback_duration > 0 else 1.0
         self.playback_progress = 0.0
         self.playback_time = "00:00 / " + (self._format_time(self._playback_duration) if self._playback_duration > 0 else "--:--")
+        self.is_playing = True
         self._start_playback_indicator()
         self._start_preview_button_indicator()
         self._set_status(f"Přehrávám náhled (zpracováno za {elapsed:.2f} s)")
@@ -394,6 +399,7 @@ class RootUI(BoxLayout):
         )
 
     def stop_playback(self, update_status=True):
+        self.is_playing = False
         self._stop_playback_indicator(reset=True)
         self._stop_preview_button_indicator(reset=True)
         if self._sound:
@@ -426,6 +432,7 @@ class RootUI(BoxLayout):
 
         state = str(getattr(self._sound, "state", "")).lower()
         if state in ("stop", "stopped"):
+            self.is_playing = False
             self._stop_playback_indicator(reset=False)
             self._stop_preview_button_indicator(reset=True)
             if self._playback_duration > 0:
@@ -466,7 +473,8 @@ class RootUI(BoxLayout):
             self._preview_btn_ev.cancel()
             self._preview_btn_ev = None
         if reset:
-            self.preview_button_text = "Náhled ->"
+            self.preview_button_text = "Náhled [>-------]"
+            self.is_playing = False
 
     def _update_preview_button_indicator(self, dt):
         track_len = 8
