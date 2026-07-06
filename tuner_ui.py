@@ -108,7 +108,7 @@ KV = """
             text: "Načíst text ze souboru"
             on_release: root.request_load_text()
         Button:
-            text: "Přehrát náhled"
+            text: root.preview_button_text
             on_release: root.request_preview()
         Button:
             text: "Uložit MP3 jako..."
@@ -125,13 +125,9 @@ KV = """
         size_hint_y: None
         height: 22
         spacing: 8
-        Slider:
-            id: playback_slider
-            min: 0
+        ProgressBar:
             max: root.playback_max
             value: root.playback_progress
-            step: 0
-            on_touch_up: root.seek_playback(self.value) if self.collide_point(*args[1].pos) else None
         Label:
             size_hint_x: None
             width: 130
@@ -168,6 +164,7 @@ class RootUI(BoxLayout):
     playback_progress = NumericProperty(0.0)
     playback_max = NumericProperty(1.0)
     playback_time = StringProperty("00:00 / 00:00")
+    preview_button_text = StringProperty("Náhled [>-------]")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -180,6 +177,8 @@ class RootUI(BoxLayout):
         self._playback_ev = None
         self._playback_duration = 0.0
         self._playback_started_at = 0.0
+        self._preview_btn_ev = None
+        self._preview_btn_pos = 0
         self._processing_ev = None
         self._processing_started_at = 0.0
         self._processing_base_text = ""
@@ -300,6 +299,7 @@ class RootUI(BoxLayout):
         self.playback_progress = 0.0
         self.playback_time = "00:00 / " + (self._format_time(self._playback_duration) if self._playback_duration > 0 else "--:--")
         self._start_playback_indicator()
+        self._start_preview_button_indicator()
         self._set_status(f"Přehrávám náhled (zpracováno za {elapsed:.2f} s)")
 
     def _render_and_save(self, text, output_path):
@@ -395,6 +395,7 @@ class RootUI(BoxLayout):
 
     def stop_playback(self, update_status=True):
         self._stop_playback_indicator(reset=True)
+        self._stop_preview_button_indicator(reset=True)
         if self._sound:
             self._sound.stop()
             self._sound = None
@@ -426,6 +427,7 @@ class RootUI(BoxLayout):
         state = str(getattr(self._sound, "state", "")).lower()
         if state in ("stop", "stopped"):
             self._stop_playback_indicator(reset=False)
+            self._stop_preview_button_indicator(reset=True)
             if self._playback_duration > 0:
                 self.playback_progress = self._playback_duration
                 self.playback_time = f"{self._format_time(self._playback_duration)} / {self._format_time(self._playback_duration)}"
@@ -447,30 +449,32 @@ class RootUI(BoxLayout):
 
         return True
 
-    def seek_playback(self, position):
-        if not self._sound:
-            return
-
-        target = float(position)
-        if target < 0:
-            target = 0.0
-        if self._playback_duration > 0:
-            target = min(target, self._playback_duration)
-
-        try:
-            self._sound.seek(target)
-            self._playback_started_at = time.perf_counter() - target
-            self.playback_progress = target
-            total_txt = self._format_time(self._playback_duration) if self._playback_duration > 0 else "--:--"
-            self.playback_time = f"{self._format_time(target)} / {total_txt}"
-        except Exception:
-            self._set_status("Chyba: Posun přehrávání není dostupný")
-
     def _format_time(self, seconds):
         total = max(0, int(seconds))
         minutes = total // 60
         secs = total % 60
         return f"{minutes:02d}:{secs:02d}"
+
+    def _start_preview_button_indicator(self):
+        self._stop_preview_button_indicator(reset=False)
+        self._preview_btn_pos = 0
+        self._preview_btn_ev = Clock.schedule_interval(self._update_preview_button_indicator, 0.12)
+        self._update_preview_button_indicator(0)
+
+    def _stop_preview_button_indicator(self, reset):
+        if self._preview_btn_ev:
+            self._preview_btn_ev.cancel()
+            self._preview_btn_ev = None
+        if reset:
+            self.preview_button_text = "Náhled ->"
+
+    def _update_preview_button_indicator(self, dt):
+        track_len = 8
+        cells = ["-"] * track_len
+        idx = self._preview_btn_pos % track_len
+        cells[idx] = ">"
+        self.preview_button_text = "Náhled [" + "".join(cells) + "]"
+        self._preview_btn_pos += 1
 
     def _start_processing_indicator(self, base_text):
         self._stop_processing_indicator()
