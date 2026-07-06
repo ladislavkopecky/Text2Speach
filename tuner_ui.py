@@ -56,6 +56,87 @@ KV = """
             size: self.size
             radius: [6]
 
+<MoonSlider@Slider>:
+    cursor_image: ""
+    cursor_size: 1, 1
+    value_track: True
+    value_track_color: C("#7c4daa")
+    value_track_width: 3
+    canvas.after:
+        # stín
+        Color:
+            rgba: C("#06030f")
+        Ellipse:
+            pos: self.value_pos[0] - 10, self.center_y - 10
+            size: 22, 22
+        # hlavní kruh
+        Color:
+            rgba: C("#7c4daa")
+        Ellipse:
+            pos: self.value_pos[0] - 11, self.center_y - 11
+            size: 22, 22
+        # světlejší okraj nahoře (3D efekt)
+        Color:
+            rgba: C("#b07de0")
+        Ellipse:
+            pos: self.value_pos[0] - 10, self.center_y - 10
+            size: 19, 19
+        # střed – tmavší (hloubka)
+        Color:
+            rgba: C("#5a3090")
+        Ellipse:
+            pos: self.value_pos[0] - 7, self.center_y - 7
+            size: 14, 14
+        # odlesk (bílá tečka vlevo nahoře)
+        Color:
+            rgba: 1, 1, 1, 0.35
+        Ellipse:
+            pos: self.value_pos[0] - 5, self.center_y + 2
+            size: 6, 6
+
+<MoonProgressBar@ProgressBar>:
+    canvas.after:
+        # pozadí tracku
+        Color:
+            rgba: C("#1a0e33")
+        RoundedRectangle:
+            pos: self.x, self.center_y - 3
+            size: self.width, 6
+            radius: [3]
+        # fialový progres
+        Color:
+            rgba: C("#7c4daa")
+        RoundedRectangle:
+            pos: self.x, self.center_y - 3
+            size: (self.width * self.value / self.max) if self.max > 0 else 0, 6
+            radius: [3]
+        # kolecko na konci (stejné jako slider)
+        Color:
+            rgba: C("#06030f")
+        Ellipse:
+            pos: self.x + (self.width * self.value / self.max if self.max > 0 else 0) - 10, self.center_y - 10
+            size: 22, 22
+        Color:
+            rgba: C("#7c4daa")
+        Ellipse:
+            pos: self.x + (self.width * self.value / self.max if self.max > 0 else 0) - 11, self.center_y - 11
+            size: 22, 22
+        Color:
+            rgba: C("#b07de0")
+        Ellipse:
+            pos: self.x + (self.width * self.value / self.max if self.max > 0 else 0) - 10, self.center_y - 10
+            size: 19, 19
+        Color:
+            rgba: C("#5a3090")
+        Ellipse:
+            pos: self.x + (self.width * self.value / self.max if self.max > 0 else 0) - 7, self.center_y - 7
+            size: 14, 14
+        Color:
+            rgba: 1, 1, 1, 0.35
+        Ellipse:
+            pos: self.x + (self.width * self.value / self.max if self.max > 0 else 0) - 5, self.center_y + 2
+            size: 6, 6
+
 <RootUI>:
     orientation: "vertical"
     padding: 12
@@ -102,36 +183,24 @@ KV = """
     BoxLayout:
         size_hint_y: None
         height: 36
-        Slider:
+        MoonSlider:
             min: -100
             max: 20
             step: 1
             value: root.pitch_hz
             on_value: root.set_pitch(self.value)
-            cursor_image: ""
-            value_track: True
-            value_track_color: C("#7c4daa")
-            value_track_width: 3
-        Slider:
+        MoonSlider:
             min: -50
             max: 30
             step: 1
             value: root.rate_pct
             on_value: root.set_rate(self.value)
-            cursor_image: ""
-            value_track: True
-            value_track_color: C("#7c4daa")
-            value_track_width: 3
-        Slider:
+        MoonSlider:
             min: -60
             max: 20
             step: 1
             value: root.volume_pct
             on_value: root.set_volume(self.value)
-            cursor_image: ""
-            value_track: True
-            value_track_color: C("#7c4daa")
-            value_track_width: 3
 
     BoxLayout:
         size_hint_y: None
@@ -149,36 +218,24 @@ KV = """
     BoxLayout:
         size_hint_y: None
         height: 36
-        Slider:
+        MoonSlider:
             min: 0.70
             max: 1.05
             step: 0.01
             value: root.dark_pitch_factor
             on_value: root.set_dark_pitch(self.value)
-            cursor_image: ""
-            value_track: True
-            value_track_color: C("#7c4daa")
-            value_track_width: 3
-        Slider:
+        MoonSlider:
             min: 0
             max: 300
             step: 5
             value: root.echo_ms
             on_value: root.set_echo_ms(self.value)
-            cursor_image: ""
-            value_track: True
-            value_track_color: C("#7c4daa")
-            value_track_width: 3
-        Slider:
+        MoonSlider:
             min: -12
             max: 6
             step: 1
             value: root.output_gain_db
             on_value: root.set_output_gain(self.value)
-            cursor_image: ""
-            value_track: True
-            value_track_color: C("#7c4daa")
-            value_track_width: 3
 
     BoxLayout:
         size_hint_y: None
@@ -211,16 +268,12 @@ KV = """
 
     BoxLayout:
         size_hint_y: None
-        height: 22
+        height: 28
         spacing: 8
         canvas.before:
             Color:
-                rgba: C("#1a0e33")
-            RoundedRectangle:
-                pos: self.pos
-                size: self.size
-                radius: [4]
-        ProgressBar:
+                rgba: 0, 0, 0, 0
+        MoonProgressBar:
             max: root.playback_max
             value: root.playback_progress
         Label:
