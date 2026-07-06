@@ -20,16 +20,60 @@ import imageio_ffmpeg
 
 
 KV = """
+#:import C kivy.utils.get_color_from_hex
+
+<MoonButton@Button>:
+    background_color: C("#2d1b4e")
+    background_normal: ""
+    color: C("#c8b8e8")
+    bold: True
+    canvas.before:
+        Color:
+            rgba: C("#1a0838") if self.state == "down" else C("#150d2e")
+        RoundedRectangle:
+            pos: self.pos[0] + (2 if self.state == "down" else 0), self.pos[1] - (2 if self.state == "down" else 0)
+            size: self.size
+            radius: [6]
+        Color:
+            rgba: C("#5a3090") if self.state == "down" else C("#3d2060")
+        RoundedRectangle:
+            pos: self.pos[0] + (1 if self.state == "down" else -1), self.pos[1] - (1 if self.state == "down" else 1)
+            size: self.size
+            radius: [6]
+
+<MoonToggle@ToggleButton>:
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    color: C("#c8b8e8")
+    bold: True
+    on_state: self.canvas.ask_update()
+    canvas.before:
+        Color:
+            rgba: C("#8b44cc") if self.state == "down" else C("#3d2060")
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [6]
+
 <RootUI>:
     orientation: "vertical"
     padding: 12
     spacing: 8
+    canvas.before:
+        Color:
+            rgba: C("#0d0820")
+        Rectangle:
+            pos: self.pos
+            size: self.size
 
     Label:
         text: "Ladění charakteru hlasu"
         size_hint_y: None
         height: 34
         font_size: "20sp"
+        color: C("#b39ddb")
+        bold: True
 
     TextInput:
         id: preview_text
@@ -37,16 +81,23 @@ KV = """
         multiline: True
         size_hint_y: 1
         on_text: root.preview_text = self.text
+        background_color: C("#150d2e")
+        foreground_color: C("#d4c8f0")
+        cursor_color: C("#9b6dca")
+        hint_text_color: C("#5a4575")
 
     BoxLayout:
         size_hint_y: None
         height: 28
         Label:
             text: "Výška hlasu (Hz): " + str(int(root.pitch_hz))
+            color: C("#a78fc0")
         Label:
             text: "Tempo řeči (%): " + str(int(root.rate_pct))
+            color: C("#a78fc0")
         Label:
             text: "Hlasitost (%): " + str(int(root.volume_pct))
+            color: C("#a78fc0")
 
     BoxLayout:
         size_hint_y: None
@@ -57,28 +108,43 @@ KV = """
             step: 1
             value: root.pitch_hz
             on_value: root.set_pitch(self.value)
+            cursor_image: ""
+            value_track: True
+            value_track_color: C("#7c4daa")
+            value_track_width: 3
         Slider:
             min: -50
             max: 30
             step: 1
             value: root.rate_pct
             on_value: root.set_rate(self.value)
+            cursor_image: ""
+            value_track: True
+            value_track_color: C("#7c4daa")
+            value_track_width: 3
         Slider:
             min: -60
             max: 20
             step: 1
             value: root.volume_pct
             on_value: root.set_volume(self.value)
+            cursor_image: ""
+            value_track: True
+            value_track_color: C("#7c4daa")
+            value_track_width: 3
 
     BoxLayout:
         size_hint_y: None
         height: 28
         Label:
             text: "Koeficient výšky (temný styl): " + ("%.2f" % root.dark_pitch_factor)
+            color: C("#a78fc0")
         Label:
             text: "Zpoždění echa (ms): " + str(int(root.echo_ms))
+            color: C("#a78fc0")
         Label:
             text: "Zesílení výstupu (dB): " + str(int(root.output_gain_db))
+            color: C("#a78fc0")
 
     BoxLayout:
         size_hint_y: None
@@ -89,32 +155,45 @@ KV = """
             step: 0.01
             value: root.dark_pitch_factor
             on_value: root.set_dark_pitch(self.value)
+            cursor_image: ""
+            value_track: True
+            value_track_color: C("#7c4daa")
+            value_track_width: 3
         Slider:
             min: 0
             max: 300
             step: 5
             value: root.echo_ms
             on_value: root.set_echo_ms(self.value)
+            cursor_image: ""
+            value_track: True
+            value_track_color: C("#7c4daa")
+            value_track_width: 3
         Slider:
             min: -12
             max: 6
             step: 1
             value: root.output_gain_db
             on_value: root.set_output_gain(self.value)
+            cursor_image: ""
+            value_track: True
+            value_track_color: C("#7c4daa")
+            value_track_width: 3
 
     BoxLayout:
         size_hint_y: None
         height: 42
-        Button:
+        spacing: 4
+        MoonButton:
             text: "Načíst text ze souboru"
             on_release: root.request_load_text()
-        Button:
+        MoonButton:
             text: root.preview_button_text
             on_release: root.toggle_preview_or_stop()
-        Button:
+        MoonButton:
             text: "Uložit MP3 jako..."
             on_release: root.request_save_mp3()
-        ToggleButton:
+        MoonToggle:
             id: live_toggle
             text: "Živý náhled: VYP" if self.state == "normal" else "Živý náhled: ZAP"
             on_state: root.set_live(self.state == "down")
@@ -122,10 +201,11 @@ KV = """
     BoxLayout:
         size_hint_y: None
         height: 36
-        Button:
+        spacing: 4
+        MoonButton:
             text: "Uložit nastavení"
             on_release: root.save_params()
-        Button:
+        MoonButton:
             text: "Načíst nastavení"
             on_release: root.load_params()
 
@@ -133,6 +213,13 @@ KV = """
         size_hint_y: None
         height: 22
         spacing: 8
+        canvas.before:
+            Color:
+                rgba: C("#1a0e33")
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [4]
         ProgressBar:
             max: root.playback_max
             value: root.playback_progress
@@ -140,11 +227,14 @@ KV = """
             size_hint_x: None
             width: 130
             text: root.playback_time
+            color: C("#9b8ab8")
 
     Label:
         text: root.status
         size_hint_y: None
         height: 24
+        color: C("#7c6899")
+        italic: True
 """
 
 @dataclass
