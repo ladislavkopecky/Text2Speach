@@ -4,6 +4,7 @@ import tempfile
 import threading
 import subprocess
 import time
+import json
 import tkinter as tk
 from tkinter import filedialog
 from dataclasses import dataclass
@@ -51,7 +52,7 @@ KV = """
         size_hint_y: None
         height: 36
         Slider:
-            min: -40
+            min: -100
             max: 20
             step: 1
             value: root.pitch_hz
@@ -117,6 +118,16 @@ KV = """
             id: live_toggle
             text: "Živý náhled: VYP" if self.state == "normal" else "Živý náhled: ZAP"
             on_state: root.set_live(self.state == "down")
+
+    BoxLayout:
+        size_hint_y: None
+        height: 36
+        Button:
+            text: "Uložit nastavení"
+            on_release: root.save_params()
+        Button:
+            text: "Načíst nastavení"
+            on_release: root.load_params()
 
     BoxLayout:
         size_hint_y: None
@@ -500,6 +511,71 @@ class RootUI(BoxLayout):
         elapsed = time.perf_counter() - self._processing_started_at
         dots = "." * (int(elapsed * 5) % 4)
         self.status = f"{self._processing_base_text}{dots} ({elapsed:.1f} s)"
+
+    def save_params(self):
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            path = filedialog.asksaveasfilename(
+                title="Uložit nastavení hlasu",
+                defaultextension=".json",
+                initialfile="nastaveni_hlasu.json",
+                filetypes=[("JSON soubor", "*.json"), ("Všechny soubory", "*.*")],
+            )
+        finally:
+            root.destroy()
+        if not path:
+            self.status = "Uložení nastavení zrušeno"
+            return
+        p = self.params
+        data = {
+            "pitch_hz": p.pitch_hz,
+            "rate_pct": p.rate_pct,
+            "volume_pct": p.volume_pct,
+            "dark_pitch_factor": p.dark_pitch_factor,
+            "echo_ms": p.echo_ms,
+            "output_gain_db": p.output_gain_db,
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            self.status = f"Nastavení uloženo: {path}"
+        except OSError as e:
+            self.status = f"Chyba uložení: {e}"
+
+    def load_params(self):
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            path = filedialog.askopenfilename(
+                title="Načíst nastavení hlasu",
+                filetypes=[("JSON soubor", "*.json"), ("Všechny soubory", "*.*")],
+            )
+        finally:
+            root.destroy()
+        if not path:
+            self.status = "Načítání nastavení zrušeno"
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            self.status = f"Chyba načítání: {e}"
+            return
+        mapping = {
+            "pitch_hz": "set_pitch",
+            "rate_pct": "set_rate",
+            "volume_pct": "set_volume",
+            "dark_pitch_factor": "set_dark_pitch",
+            "echo_ms": "set_echo_ms",
+            "output_gain_db": "set_output_gain",
+        }
+        for key, method in mapping.items():
+            if key in data:
+                getattr(self, method)(data[key])
+        self.status = f"Nastavení načteno: {path}"
 
     def _set_status(self, msg):
         self.status = msg
