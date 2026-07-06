@@ -148,22 +148,14 @@ KV = """
             pos: self.pos
             size: self.size
 
-    Label:
-        text: "Ladění charakteru hlasu"
-        size_hint_y: None
-        height: 34
-        font_size: "20sp"
-        color: C("#b39ddb")
-        bold: True
-
     TextInput:
         id: preview_text
         text: root.preview_text
         multiline: True
         size_hint_y: 1
         on_text: root.preview_text = self.text
-        background_color: C("#150d2e")
-        foreground_color: C("#d4c8f0")
+        background_color: C("#251545")
+        foreground_color: C("#e8deff")
         cursor_color: C("#9b6dca")
         hint_text_color: C("#5a4575")
 
@@ -725,11 +717,33 @@ class RootUI(BoxLayout):
 
 
 class TunerApp(App):
+    title = "Generátor zvuků"
+
     def build(self):
         Builder.load_string(KV)
         root = RootUI()
         root.ids.live_toggle.state = "normal"
+        Clock.schedule_once(lambda dt: self._apply_dark_titlebar(), 0.3)
         return root
+
+    def _apply_dark_titlebar(self):
+        try:
+            import ctypes
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            # tmavý režim titulku (Windows 10+)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 20,
+                ctypes.byref(ctypes.c_int(1)),
+                ctypes.sizeof(ctypes.c_int),
+            )
+            # barva titulku #2d1b4e → BGR = 0x4e1b2d (Windows 11)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 35,
+                ctypes.byref(ctypes.c_int(0x4e1b2d)),
+                ctypes.sizeof(ctypes.c_int),
+            )
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
