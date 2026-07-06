@@ -8,27 +8,27 @@ import unicodedata
 
 
 # Voice tuning parameters.
-# LOCAL_TTS_RATE: rychlost pro lokalni Windows hlas v pyttsx3.
+# Rychlost řeči
 # Vyssi cislo = rychlejsi rec, nizsi cislo = pomalejsi rec.
 LOCAL_TTS_RATE = 120
 
-# LOCAL_TTS_VOLUME: hlasitost lokalniho hlasu v rozsahu 0.0 az 1.0.
+# Hlasitost hlasu
 # 1.0 = plna hlasitost, 0.0 = ticho.
 LOCAL_TTS_VOLUME = 0.9
 
-# EDGE_TTS_VOICE: jmeno online ceskeho hlasu z edge-tts.
+# Jméno českého hlasu
 # V tomto projektu je dostupny hlavne Antonin, tedy muzsky hlas.
 EDGE_TTS_VOICE = 'cs-CZ-AntoninNeural'
 
-# EDGE_TTS_PITCH: vyska hlasu pro edge-tts.
+# Výška hlasu
 # Zaporne hodnoty zneji hloub, kladne vys.
 EDGE_TTS_PITCH = '-15Hz'
 
-# EDGE_TTS_RATE: tempo reci pro edge-tts.
+# Tempo řeči
 # Zaporne procento zpomaluje, maximalni hodnota je -1
 EDGE_TTS_RATE = '-18%'
 
-# EDGE_TTS_VOLUME: hlasitost pro edge-tts.
+# Hlasitost
 # '+0%' je neutralni, zaporne hodnoty tlumi vystup.
 EDGE_TTS_VOLUME = '-8%'
 
