@@ -3,11 +3,14 @@ import asyncio
 import tempfile
 import threading
 import subprocess
-import sys
+import time
+import tkinter as tk
+from tkinter import filedialog
 from dataclasses import dataclass
 
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.audio import SoundLoader
 from kivy.lang import Builder
 from kivy.properties import StringProperty, NumericProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
@@ -31,8 +34,7 @@ KV = """
         id: preview_text
         text: root.preview_text
         multiline: True
-        size_hint_y: None
-        height: 120
+        size_hint_y: 1
         on_text: root.preview_text = self.text
 
     BoxLayout:
@@ -103,8 +105,14 @@ KV = """
         size_hint_y: None
         height: 42
         Button:
+            text: "Načíst text ze souboru"
+            on_release: root.request_load_text()
+        Button:
             text: "Přehrát náhled"
             on_release: root.request_preview()
+        Button:
+            text: "Uložit MP3 jako..."
+            on_release: root.request_save_mp3()
         ToggleButton:
             id: live_toggle
             text: "Živý náhled: VYP" if self.state == "normal" else "Živý náhled: ZAP"
@@ -132,7 +140,7 @@ class Params:
 
 
 class RootUI(BoxLayout):
-    preview_text = StringProperty("Zrcadlo, zrcadlo, kdo je v zemi zdejší nejkrásnější?")
+    preview_text = StringProperty("Testování pohádkových zvuků. Sem napiš text, nebo načti soubor s pohádkou. Pak klikni na tlačítko Přehrát náhled, nebo Uložit MP3 jako...")
     status = StringProperty("Připraveno")
     pitch_hz = NumericProperty(-15)
     rate_pct = NumericProperty(-18)
@@ -149,6 +157,10 @@ class RootUI(BoxLayout):
         self._worker_lock = threading.Lock()
         self._running = False
         self._play_proc = None
+        self._sound = None
+        self._processing_ev = None
+        self._processing_started_at = 0.0
+        self._processing_base_text = ""
 
     def set_pitch(self, v):
         self.pitch_hz = int(v)
@@ -201,34 +213,126 @@ class RootUI(BoxLayout):
             return
         threading.Thread(target=self._render_and_play, args=(text,), daemon=True).start()
 
+    def request_load_text(self):
+        file_path = self._choose_input_text_file()
+        if not file_path:
+            self.status = "Načítání zrušeno"
+            return
+
+        text = self._read_text_file(file_path)
+        if text is None:
+            return
+
+        self.preview_text = text
+        self.status = f"Načteno: {file_path}"
+
+    def request_save_mp3(self):
+        if self._running:
+            self.status = "Počkejte na dokončení aktuální úlohy"
+            return
+        text = self.preview_text.strip()
+        if not text:
+            self.status = "Text je prázdný"
+            return
+
+        output_path = self._choose_output_path()
+        if not output_path:
+            self.status = "Uložení zrušeno"
+            return
+
+        threading.Thread(target=self._render_and_save, args=(text, output_path), daemon=True).start()
+
     def _render_and_play(self, text):
         with self._worker_lock:
             self._running = True
+            started_at = time.perf_counter()
             try:
-                Clock.schedule_once(lambda dt: self._set_status("Generuji..."), 0)
+                Clock.schedule_once(lambda dt: self._start_processing_indicator("Generuji náhled"), 0)
                 raw_mp3 = os.path.join(tempfile.gettempdir(), "kivy_voice_raw.mp3")
-                dark_mp3 = os.path.join(tempfile.gettempdir(), "kivy_voice_dark.mp3")
+                dark_wav = os.path.join(tempfile.gettempdir(), "kivy_voice_dark.wav")
 
                 asyncio.run(self._edge_tts(text, raw_mp3))
-                self._stylize(raw_mp3, dark_mp3)
+                self._stylize(raw_mp3, dark_wav)
 
-                self.stop_playback()
-                ffmpeg_dir = os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
-                ffplay_exe = os.path.join(ffmpeg_dir, "ffplay.exe")
-                if os.path.exists(ffplay_exe):
-                    self._play_proc = subprocess.Popen(
-                        [ffplay_exe, "-nodisp", "-autoexit", "-loglevel", "quiet", dark_mp3],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                else:
-                    os.startfile(dark_mp3)
-
-                Clock.schedule_once(lambda dt: self._set_status("Přehrávám náhled"), 0)
+                elapsed = time.perf_counter() - started_at
+                Clock.schedule_once(
+                    lambda dt: self._play_preview_in_app(dark_wav, elapsed),
+                    0,
+                )
             except Exception as e:
                 Clock.schedule_once(lambda dt: self._set_status("Chyba: " + str(e)), 0)
             finally:
+                Clock.schedule_once(lambda dt: self._stop_processing_indicator(), 0)
                 self._running = False
+
+    def _play_preview_in_app(self, audio_path, elapsed):
+        self.stop_playback(update_status=False)
+        self._sound = SoundLoader.load(audio_path)
+        if not self._sound:
+            self._set_status("Chyba: Přímé přehrání v aplikaci se nepodařilo")
+            return
+        self._sound.play()
+        self._set_status(f"Přehrávám náhled (zpracováno za {elapsed:.2f} s)")
+
+    def _render_and_save(self, text, output_path):
+        with self._worker_lock:
+            self._running = True
+            try:
+                Clock.schedule_once(lambda dt: self._start_processing_indicator("Generuji a ukládám MP3"), 0)
+                raw_mp3 = os.path.join(tempfile.gettempdir(), "kivy_voice_raw.mp3")
+
+                asyncio.run(self._edge_tts(text, raw_mp3))
+                self._stylize(raw_mp3, output_path)
+
+                Clock.schedule_once(lambda dt: self._set_status(f"Uloženo: {output_path}"), 0)
+            except Exception as e:
+                Clock.schedule_once(lambda dt: self._set_status("Chyba: " + str(e)), 0)
+            finally:
+                Clock.schedule_once(lambda dt: self._stop_processing_indicator(), 0)
+                self._running = False
+
+    def _choose_output_path(self):
+        default_name = "vystup.mp3"
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            selected = filedialog.asksaveasfilename(
+                title="Uložit zvuk jako MP3",
+                defaultextension=".mp3",
+                initialfile=default_name,
+                filetypes=[("MP3 soubor", "*.mp3"), ("Všechny soubory", "*.*")],
+            )
+            return selected or None
+        finally:
+            root.destroy()
+
+    def _choose_input_text_file(self):
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            selected = filedialog.askopenfilename(
+                title="Načíst textový soubor",
+                filetypes=[("Textové soubory", "*.txt"), ("Všechny soubory", "*.*")],
+            )
+            return selected or None
+        finally:
+            root.destroy()
+
+    def _read_text_file(self, file_path):
+        for encoding in ("utf-8", "utf-8-sig", "cp1250", "latin-1"):
+            try:
+                with open(file_path, "r", encoding=encoding) as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                continue
+            except OSError as e:
+                self.status = f"Chyba čtení: {e}"
+                return None
+
+        self.status = "Soubor nelze načíst v podporovaném kódování"
+        return None
 
     async def _edge_tts(self, text, out_mp3):
         import edge_tts
@@ -261,52 +365,42 @@ class RootUI(BoxLayout):
             text=True,
         )
 
-    def stop_playback(self):
+    def stop_playback(self, update_status=True):
+        if self._sound:
+            self._sound.stop()
+            self._sound = None
         if self._play_proc and self._play_proc.poll() is None:
             self._play_proc.terminate()
         self._play_proc = None
-        self.status = "Zastaveno"
+        if update_status:
+            self.status = "Zastaveno"
+
+    def _start_processing_indicator(self, base_text):
+        self._stop_processing_indicator()
+        self._processing_base_text = base_text
+        self._processing_started_at = time.perf_counter()
+        self._processing_ev = Clock.schedule_interval(self._update_processing_indicator, 0.2)
+        self._update_processing_indicator(0)
+
+    def _stop_processing_indicator(self):
+        if self._processing_ev:
+            self._processing_ev.cancel()
+            self._processing_ev = None
+
+    def _update_processing_indicator(self, dt):
+        elapsed = time.perf_counter() - self._processing_started_at
+        dots = "." * (int(elapsed * 5) % 4)
+        self.status = f"{self._processing_base_text}{dots} ({elapsed:.1f} s)"
 
     def _set_status(self, msg):
         self.status = msg
-
-
-def load_initial_text_from_args() -> tuple[str | None, str | None]:
-    # Načti textový soubor včetně českých znaků.
-    # Priorita:
-    # 1) 1. argument CLI
-    # 2) výchozí soubor pohadka-test.txt vedle skriptu
-    # Kódování: UTF-8/UTF-8 BOM, pak fallback na cp1250 a latin-1.
-    if len(sys.argv) >= 2:
-        input_path = sys.argv[1]
-    else:
-        input_path = os.path.join(os.path.dirname(__file__), "pohadka-test.txt")
-        if not os.path.exists(input_path):
-            return None, None
-
-    if not os.path.exists(input_path):
-        return None, f"Soubor nebyl nalezen: {input_path}"
-
-    for encoding in ("utf-8", "utf-8-sig", "cp1250", "latin-1"):
-        try:
-            with open(input_path, "r", encoding=encoding) as f:
-                return f.read(), f"Načteno ze souboru: {input_path} ({encoding})"
-        except UnicodeDecodeError:
-            continue
-
-    return None, f"Soubor nelze načíst v podporovaném kódování: {input_path}"
 
 
 class TunerApp(App):
     def build(self):
         Builder.load_string(KV)
         root = RootUI()
-        loaded_text, message = load_initial_text_from_args()
-        if loaded_text:
-            root.preview_text = loaded_text
-        if message:
-            root.status = message
-        root.ids.live_toggle.state = "down"
+        root.ids.live_toggle.state = "normal"
         return root
 
 
