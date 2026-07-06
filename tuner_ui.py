@@ -121,6 +121,22 @@ KV = """
             text: "Zastavit zvuk"
             on_release: root.stop_playback()
 
+    BoxLayout:
+        size_hint_y: None
+        height: 22
+        spacing: 8
+        Slider:
+            id: playback_slider
+            min: 0
+            max: root.playback_max
+            value: root.playback_progress
+            step: 0
+            on_touch_up: root.seek_playback(self.value) if self.collide_point(*args[1].pos) else None
+        Label:
+            size_hint_x: None
+            width: 130
+            text: root.playback_time
+
     Label:
         text: root.status
         size_hint_y: None
@@ -149,6 +165,9 @@ class RootUI(BoxLayout):
     echo_ms = NumericProperty(100)
     output_gain_db = NumericProperty(-2)
     live_mode = BooleanProperty(False)
+    playback_progress = NumericProperty(0.0)
+    playback_max = NumericProperty(1.0)
+    playback_time = StringProperty("00:00 / 00:00")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -158,6 +177,9 @@ class RootUI(BoxLayout):
         self._running = False
         self._play_proc = None
         self._sound = None
+        self._playback_ev = None
+        self._playback_duration = 0.0
+        self._playback_started_at = 0.0
         self._processing_ev = None
         self._processing_started_at = 0.0
         self._processing_base_text = ""
@@ -272,6 +294,12 @@ class RootUI(BoxLayout):
             self._set_status("Chyba: Přímé přehrání v aplikaci se nepodařilo")
             return
         self._sound.play()
+        self._playback_duration = float(getattr(self._sound, "length", 0.0) or 0.0)
+        self._playback_started_at = time.perf_counter()
+        self.playback_max = self._playback_duration if self._playback_duration > 0 else 1.0
+        self.playback_progress = 0.0
+        self.playback_time = "00:00 / " + (self._format_time(self._playback_duration) if self._playback_duration > 0 else "--:--")
+        self._start_playback_indicator()
         self._set_status(f"Přehrávám náhled (zpracováno za {elapsed:.2f} s)")
 
     def _render_and_save(self, text, output_path):
@@ -366,6 +394,7 @@ class RootUI(BoxLayout):
         )
 
     def stop_playback(self, update_status=True):
+        self._stop_playback_indicator(reset=True)
         if self._sound:
             self._sound.stop()
             self._sound = None
@@ -374,6 +403,74 @@ class RootUI(BoxLayout):
         self._play_proc = None
         if update_status:
             self.status = "Zastaveno"
+
+    def _start_playback_indicator(self):
+        self._stop_playback_indicator(reset=False)
+        self._playback_ev = Clock.schedule_interval(self._update_playback_indicator, 0.1)
+        self._update_playback_indicator(0)
+
+    def _stop_playback_indicator(self, reset):
+        if self._playback_ev:
+            self._playback_ev.cancel()
+            self._playback_ev = None
+        if reset:
+            self.playback_progress = 0.0
+            self.playback_max = 1.0
+            self.playback_time = "00:00 / 00:00"
+
+    def _update_playback_indicator(self, dt):
+        if not self._sound:
+            self._stop_playback_indicator(reset=False)
+            return False
+
+        state = str(getattr(self._sound, "state", "")).lower()
+        if state in ("stop", "stopped"):
+            self._stop_playback_indicator(reset=False)
+            if self._playback_duration > 0:
+                self.playback_progress = self._playback_duration
+                self.playback_time = f"{self._format_time(self._playback_duration)} / {self._format_time(self._playback_duration)}"
+            return False
+
+        current = float(self._sound.get_pos() or 0.0)
+        if current <= 0:
+            current = time.perf_counter() - self._playback_started_at
+        if current < 0:
+            current = 0.0
+
+        if self._playback_duration > 0:
+            current = min(current, self._playback_duration)
+            self.playback_progress = current
+            self.playback_time = f"{self._format_time(current)} / {self._format_time(self._playback_duration)}"
+        else:
+            self.playback_progress = (self.playback_progress + 0.05) % self.playback_max
+            self.playback_time = f"{self._format_time(current)} / --:--"
+
+        return True
+
+    def seek_playback(self, position):
+        if not self._sound:
+            return
+
+        target = float(position)
+        if target < 0:
+            target = 0.0
+        if self._playback_duration > 0:
+            target = min(target, self._playback_duration)
+
+        try:
+            self._sound.seek(target)
+            self._playback_started_at = time.perf_counter() - target
+            self.playback_progress = target
+            total_txt = self._format_time(self._playback_duration) if self._playback_duration > 0 else "--:--"
+            self.playback_time = f"{self._format_time(target)} / {total_txt}"
+        except Exception:
+            self._set_status("Chyba: Posun přehrávání není dostupný")
+
+    def _format_time(self, seconds):
+        total = max(0, int(seconds))
+        minutes = total // 60
+        secs = total % 60
+        return f"{minutes:02d}:{secs:02d}"
 
     def _start_processing_indicator(self, base_text):
         self._stop_processing_indicator()
